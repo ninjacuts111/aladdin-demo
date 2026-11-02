@@ -544,11 +544,27 @@ const addPuff = () => puffs.push({x:SW*(.15+Math.random()*.7), y:SH+60, vx:(Math
 
 /* ---------- Pointer + scroll driven parallax ---------- */
 let mx = 0, my = 0, tmx = 0, tmy = 0, sy = scrollY;
-addEventListener('pointermove', e=>{
+if (fine) addEventListener('pointermove', e=>{
   tmx = e.clientX/innerWidth - .5; tmy = e.clientY/innerHeight - .5;
-  if (fine) $('#glow').style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
+  $('#glow').style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
 }, {passive:true});
-if (!fine) $('#glow').style.display='none';
+else $('#glow').style.display='none';
+
+// Touch devices: steer the 3D with the phone's tilt (gyro); iOS asks for permission on the first tap
+let gyro = false;
+const onTilt = e => {
+  if (e.gamma == null) return;
+  gyro = true;
+  const clamp = v => Math.max(-.5, Math.min(.5, v));
+  tmx = clamp(e.gamma/40); tmy = clamp((e.beta-45)/40);
+};
+if (!fine && !reduce && window.DeviceOrientationEvent) {
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    addEventListener('touchend', () => DeviceOrientationEvent.requestPermission()
+      .then(s => { if (s === 'granted') addEventListener('deviceorientation', onTilt); }).catch(()=>{}), {once:true});
+  } else addEventListener('deviceorientation', onTilt);
+}
+const tiltCards = fine ? [] : [...document.querySelectorAll('[data-tilt]')];
 addEventListener('scroll', ()=> sy = scrollY, {passive:true});
 
 const heroPhoto = $('.hero-photo'), heroInner = $('#heroInner'), lamp = $('#lamp');
@@ -558,6 +574,8 @@ const bandBg = $('#bandBg'), band = $('.band'), nav = $('#nav'), prog = $('#prog
 let frame = 0;
 const loop = () => {
   frame++;
+  // no mouse and no gyro yet: gentle automatic sway so the 3D still breathes
+  if (!fine && !gyro) { const t = frame/60; tmx = Math.sin(t*.6)*.35; tmy = Math.cos(t*.45)*.25; }
   mx += (tmx-mx)*.06; my += (tmy-my)*.06;
   const H = SH;
 
@@ -598,6 +616,16 @@ const loop = () => {
       const r = el.parentElement.getBoundingClientRect();
       const off = (r.top + r.height/2 - innerHeight/2);
       el.style.transform = `translate3d(${mx*el.dataset.speed*-60}px,${off*el.dataset.speed}px,0)`;
+    }
+    // touch: cards tilt in 3D as they scroll through the screen
+    for (const el of tiltCards) {
+      if (el.classList.contains('reveal') && !el.classList.contains('in')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > innerHeight) continue;
+      const k = Math.max(-.6, Math.min(.6, (r.top + r.height/2)/innerHeight - .5));
+      el.classList.add('active');
+      el.style.transform = `rotateX(${k*-28}deg) rotateY(${mx*22}deg)`;
+      el.style.setProperty('--gx', (50 + mx*120)+'%'); el.style.setProperty('--gy', (50 + k*120)+'%');
     }
     // band
     const br = band.getBoundingClientRect();
